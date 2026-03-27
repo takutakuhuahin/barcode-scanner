@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>在庫スキャナー</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+
+  :root {
+    --ink: #0a0a0a;
+    --paper: #f5f0e8;
+    --accent: #e84b2a;
+    --accent2: #2a6ee8;
+    --grid: #d4cfc4;
+    --success: #1a7a4a;
+    --card: #ffffff;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    min-height: 100vh;
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  header {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 16px 20px 14px;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    border-bottom: 3px solid var(--accent);
+  }
+
+  header h1 {
+    font-size: 20px;
+    font-weight: 900;
+    letter-spacing: 0.05em;
+  }
+
+  header span {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #888;
+    letter-spacing: 0.1em;
+  }
+
+  .container { padding: 20px 16px; max-width: 480px; margin: 0 auto; }
+
+  /* GAS URL入力 */
+  .setup-card {
+    background: var(--ink);
+    color: var(--paper);
+    border-radius: 2px;
+    padding: 16px;
+    margin-bottom: 20px;
+    border-left: 4px solid var(--accent);
+  }
+
+  .setup-card label {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: #aaa;
+    display: block;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+
+  .setup-card input {
+    width: 100%;
+    background: #1e1e1e;
+    border: 1px solid #333;
+    color: var(--paper);
+    padding: 10px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    border-radius: 2px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .setup-card input:focus { border-color: var(--accent); }
+
+  .setup-card input::placeholder { color: #555; }
+
+  /* スキャンエリア */
+  .scan-section {
+    background: var(--card);
+    border: 2px solid var(--ink);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 20px;
+    box-shadow: 4px 4px 0 var(--ink);
+  }
+
+  .scan-header {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 10px 16px;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .scan-header .mode-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    background: var(--accent);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 1px;
+  }
+
+  #camera-container {
+    position: relative;
+    width: 100%;
+    height: 220px;
+    background: #111;
+    display: none;
+    overflow: hidden;
+  }
+
+  #camera-container.active { display: block; }
+
+  #camera-container video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .scan-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  .scan-frame {
+    width: 240px;
+    height: 80px;
+    position: relative;
+  }
+
+  .scan-frame::before, .scan-frame::after,
+  .scan-frame span::before, .scan-frame span::after {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-color: var(--accent);
+    border-style: solid;
+  }
+
+  .scan-frame::before { top: 0; left: 0; border-width: 3px 0 0 3px; }
+  .scan-frame::after { top: 0; right: 0; border-width: 3px 3px 0 0; }
+  .scan-frame span::before { bottom: 0; left: 0; border-width: 0 0 3px 3px; }
+  .scan-frame span::after { bottom: 0; right: 0; border-width: 0 3px 3px 0; }
+
+  .scan-line {
+    position: absolute;
+    width: 100%;
+    height: 2px;
+    background: var(--accent);
+    opacity: 0.8;
+    animation: scanline 2s ease-in-out infinite;
+    box-shadow: 0 0 8px var(--accent);
+  }
+
+  @keyframes scanline {
+    0%, 100% { top: 10%; }
+    50% { top: 85%; }
+  }
+
+  .manual-input-area {
+    padding: 16px;
+  }
+
+  .manual-input-area label {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: #666;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  .barcode-display {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: 0.05em;
+    padding: 12px 0 4px;
+    border-bottom: 2px solid var(--ink);
+    min-height: 50px;
+    display: flex;
+    align-items: center;
+  }
+
+  .barcode-display.empty { color: #ccc; font-size: 14px; font-weight: 400; }
+
+  /* ボタン群 */
+  .btn-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 0 16px 16px;
+  }
+
+  .btn {
+    padding: 12px;
+    border: 2px solid var(--ink);
+    border-radius: 2px;
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .btn-camera {
+    background: var(--accent2);
+    color: white;
+    border-color: var(--accent2);
+    grid-column: span 2;
+    font-size: 15px;
+    padding: 14px;
+    box-shadow: 3px 3px 0 #1a4a9a;
+  }
+
+  .btn-camera:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #1a4a9a; }
+
+  .btn-manual {
+    background: var(--paper);
+    color: var(--ink);
+    box-shadow: 2px 2px 0 var(--ink);
+  }
+
+  .btn-manual:active { transform: translate(2px, 2px); box-shadow: none; }
+
+  .btn-clear {
+    background: var(--paper);
+    color: #999;
+    border-color: #ccc;
+  }
+
+  /* 数量・送信エリア */
+  .form-section {
+    background: var(--card);
+    border: 2px solid var(--ink);
+    border-radius: 2px;
+    margin-bottom: 20px;
+    box-shadow: 4px 4px 0 var(--ink);
+    overflow: hidden;
+  }
+
+  .form-header {
+    background: var(--accent);
+    color: white;
+    padding: 10px 16px;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+
+  .form-body { padding: 16px; }
+
+  .field { margin-bottom: 16px; }
+
+  .field label {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: #666;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  .field input {
+    width: 100%;
+    border: 2px solid var(--ink);
+    border-radius: 2px;
+    padding: 10px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    outline: none;
+    background: var(--paper);
+    transition: border-color 0.2s;
+  }
+
+  .field input:focus { border-color: var(--accent2); }
+
+  .qty-row {
+    display: grid;
+    grid-template-columns: 48px 1fr 48px;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .qty-btn {
+    width: 48px;
+    height: 48px;
+    border: 2px solid var(--ink);
+    background: var(--paper);
+    font-size: 24px;
+    font-weight: 700;
+    cursor: pointer;
+    border-radius: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 2px 2px 0 var(--ink);
+    transition: all 0.1s;
+  }
+
+  .qty-btn:active { transform: translate(2px, 2px); box-shadow: none; }
+
+  .datetime-display {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    color: var(--ink);
+    padding: 10px 12px;
+    background: var(--paper);
+    border: 2px solid var(--grid);
+    border-radius: 2px;
+  }
+
+  .btn-submit {
+    width: 100%;
+    padding: 18px;
+    background: var(--ink);
+    color: var(--paper);
+    border: none;
+    border-radius: 2px;
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    font-size: 17px;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    box-shadow: 4px 4px 0 var(--accent);
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .btn-submit:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--accent); }
+
+  .btn-submit:disabled {
+    background: #ccc;
+    color: #999;
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+
+  /* ログ */
+  .log-section {
+    background: var(--card);
+    border: 2px solid var(--ink);
+    border-radius: 2px;
+    box-shadow: 4px 4px 0 var(--ink);
+    overflow: hidden;
+  }
+
+  .log-header {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 10px 16px;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .log-count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    background: var(--accent);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 1px;
+  }
+
+  .log-list { max-height: 260px; overflow-y: auto; }
+
+  .log-item {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--grid);
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px;
+    align-items: center;
+    animation: slideIn 0.2s ease;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .log-item:last-child { border-bottom: none; }
+
+  .log-barcode {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  .log-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #999;
+  }
+
+  .log-qty {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 700;
+    grid-column: 1;
+  }
+
+  .log-status {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 1px;
+    font-weight: 700;
+    grid-row: span 2;
+  }
+
+  .log-status.ok { background: #d4f0e4; color: var(--success); }
+  .log-status.err { background: #fde8e4; color: var(--accent); }
+  .log-status.pending { background: #fff3d4; color: #b8730a; }
+
+  .log-empty {
+    padding: 32px 16px;
+    text-align: center;
+    color: #bbb;
+    font-size: 13px;
+  }
+
+  /* トースト */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--ink);
+    color: var(--paper);
+    padding: 12px 24px;
+    border-radius: 2px;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    z-index: 999;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    border-left: 4px solid var(--success);
+    white-space: nowrap;
+  }
+
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.error { border-left-color: var(--accent); }
+
+  /* 手動入力モーダル */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10,10,10,0.7);
+    z-index: 200;
+    display: none;
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .modal-overlay.active { display: flex; }
+
+  .modal {
+    background: var(--paper);
+    width: 100%;
+    padding: 24px 20px;
+    border-top: 4px solid var(--accent);
+    animation: slideUp 0.25s ease;
+  }
+
+  @keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+
+  .modal h3 {
+    font-size: 14px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    color: #666;
+  }
+
+  .modal input {
+    width: 100%;
+    border: 2px solid var(--ink);
+    border-radius: 2px;
+    padding: 14px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    outline: none;
+    background: white;
+    margin-bottom: 16px;
+  }
+
+  .modal-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .modal-btn {
+    padding: 14px;
+    border: 2px solid var(--ink);
+    border-radius: 2px;
+    font-family: 'Zen Kaku Gothic New', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+  }
+
+  .modal-btn-ok { background: var(--ink); color: var(--paper); }
+  .modal-btn-cancel { background: var(--paper); color: var(--ink); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📦 在庫スキャナー</h1>
+  <span>FISH INVENTORY v1.0</span>
+</header>
+
+<div class="container">
+
+  <!-- GAS URL設定 -->
+  <div class="setup-card">
+    <label>🔗 Google Apps Script URL</label>
+    <input type="url" id="gasUrl" placeholder="https://script.google.com/macros/s/..." />
+  </div>
+
+  <!-- スキャンエリア -->
+  <div class="scan-section">
+    <div class="scan-header">
+      <span>バーコードスキャン</span>
+      <span class="mode-badge" id="modeLabel">待機中</span>
+    </div>
+
+    <div id="camera-container">
+      <div id="interactive" class="viewport" style="width:100%;height:100%"></div>
+      <div class="scan-overlay">
+        <div class="scan-frame">
+          <span></span>
+          <div class="scan-line"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="manual-input-area">
+      <label>読み取り結果</label>
+      <div class="barcode-display empty" id="barcodeDisplay">スキャン待ち...</div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-camera" id="btnCamera" onclick="toggleCamera()">
+        📷 カメラでスキャン開始
+      </button>
+      <button class="btn btn-manual" onclick="openManual()">✏️ 手動入力</button>
+      <button class="btn btn-clear" onclick="clearBarcode()">✕ クリア</button>
+    </div>
+  </div>
+
+  <!-- 数量・送信 -->
+  <div class="form-section">
+    <div class="form-header">📋 出荷情報入力</div>
+    <div class="form-body">
+      <div class="field">
+        <label>数量</label>
+        <div class="qty-row">
+          <button class="qty-btn" onclick="changeQty(-1)">−</button>
+          <input type="number" id="qtyInput" value="1" min="1" max="999" />
+          <button class="qty-btn" onclick="changeQty(1)">＋</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>スキャン日時</label>
+        <div class="datetime-display" id="datetimeDisplay">--</div>
+      </div>
+      <button class="btn-submit" id="btnSubmit" onclick="submitData()" disabled>
+        🚀 スプレッドシートに送信
+      </button>
+    </div>
+  </div>
+
+  <!-- 送信ログ -->
+  <div class="log-section">
+    <div class="log-header">
+      <span>送信ログ</span>
+      <span class="log-count" id="logCount">0件</span>
+    </div>
+    <div class="log-list" id="logList">
+      <div class="log-empty">まだ送信履歴がありません</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 手動入力モーダル -->
+<div class="modal-overlay" id="manualModal">
+  <div class="modal">
+    <h3>バーコード番号を手入力</h3>
+    <input type="text" id="manualInput" placeholder="例: 4912345678901" inputmode="numeric" />
+    <div class="modal-btns">
+      <button class="modal-btn modal-btn-cancel" onclick="closeManual()">キャンセル</button>
+      <button class="modal-btn modal-btn-ok" onclick="confirmManual()">確定</button>
+    </div>
+  </div>
+</div>
+
+<!-- トースト -->
+<div class="toast" id="toast"></div>
+
+<script>
+let currentBarcode = '';
+let cameraActive = false;
+let logs = [];
+let scanCooldown = false;
+
+// 日時更新
+function updateDatetime() {
+  const now = new Date();
+  const fmt = now.toLocaleString('ja-JP', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  });
+  document.getElementById('datetimeDisplay').textContent = fmt;
+}
+updateDatetime();
+setInterval(updateDatetime, 1000);
+
+// カメラ制御
+function toggleCamera() {
+  if (cameraActive) {
+    stopCamera();
+  } else {
+    startCamera();
+  }
+}
+
+function startCamera() {
+  const container = document.getElementById('camera-container');
+  container.classList.add('active');
+  document.getElementById('btnCamera').textContent = '⏹ カメラ停止';
+  document.getElementById('modeLabel').textContent = 'スキャン中';
+  cameraActive = true;
+
+  Quagga.init({
+    inputStream: {
+      name: 'Live',
+      type: 'LiveStream',
+      target: document.querySelector('#interactive'),
+      constraints: {
+        facingMode: 'environment',
+        width: { ideal: 1280 },
+        height: { ideal: 480 }
+      }
+    },
+    decoder: {
+      readers: ['ean_reader', 'ean_8_reader', 'code_128_reader', 'code_39_reader', 'upc_reader']
+    },
+    locate: true
+  }, function(err) {
+    if (err) {
+      showToast('カメラの起動に失敗しました', true);
+      stopCamera();
+      return;
+    }
+    Quagga.start();
+  });
+
+  Quagga.onDetected(function(result) {
+    if (scanCooldown) return;
+    const code = result.codeResult.code;
+    if (code && code.length > 4) {
+      scanCooldown = true;
+      setBarcode(code);
+      // バイブレーション
+      if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+      showToast('✅ スキャン成功: ' + code);
+      stopCamera();
+      setTimeout(() => { scanCooldown = false; }, 2000);
+    }
+  });
+}
+
+function stopCamera() {
+  Quagga.stop();
+  const container = document.getElementById('camera-container');
+  container.classList.remove('active');
+  document.getElementById('btnCamera').textContent = '📷 カメラでスキャン開始';
+  document.getElementById('modeLabel').textContent = '待機中';
+  cameraActive = false;
+}
+
+function setBarcode(code) {
+  currentBarcode = code;
+  const display = document.getElementById('barcodeDisplay');
+  display.textContent = code;
+  display.classList.remove('empty');
+  document.getElementById('btnSubmit').disabled = false;
+}
+
+function clearBarcode() {
+  currentBarcode = '';
+  const display = document.getElementById('barcodeDisplay');
+  display.textContent = 'スキャン待ち...';
+  display.classList.add('empty');
+  document.getElementById('btnSubmit').disabled = true;
+  document.getElementById('qtyInput').value = 1;
+}
+
+// 手動入力
+function openManual() {
+  document.getElementById('manualModal').classList.add('active');
+  setTimeout(() => document.getElementById('manualInput').focus(), 100);
+}
+
+function closeManual() {
+  document.getElementById('manualModal').classList.remove('active');
+  document.getElementById('manualInput').value = '';
+}
+
+function confirmManual() {
+  const val = document.getElementById('manualInput').value.trim();
+  if (val) {
+    setBarcode(val);
+    showToast('入力しました: ' + val);
+  }
+  closeManual();
+}
+
+document.getElementById('manualInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') confirmManual();
+});
+
+// 数量
+function changeQty(delta) {
+  const input = document.getElementById('qtyInput');
+  const val = Math.max(1, Math.min(999, parseInt(input.value || 1) + delta));
+  input.value = val;
+}
+
+// 送信
+async function submitData() {
+  const gasUrl = document.getElementById('gasUrl').value.trim();
+  if (!gasUrl) {
+    showToast('⚠️ Apps Script URLを入力してください', true);
+    return;
+  }
+  if (!currentBarcode) {
+    showToast('⚠️ バーコードをスキャンしてください', true);
+    return;
+  }
+
+  const qty = parseInt(document.getElementById('qtyInput').value) || 1;
+  const datetime = document.getElementById('datetimeDisplay').textContent;
+  const btn = document.getElementById('btnSubmit');
+
+  const payload = {
+    barcode: currentBarcode,
+    quantity: qty,
+    datetime: datetime
+  };
+
+  btn.disabled = true;
+  btn.textContent = '送信中...';
+
+  const logItem = addLog(currentBarcode, qty, datetime, 'pending');
+
+  try {
+    const res = await fetch(gasUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    updateLog(logItem, 'ok');
+    showToast('✅ 送信完了！在庫を更新しました');
+    clearBarcode();
+  } catch (err) {
+    updateLog(logItem, 'err');
+    showToast('❌ 送信失敗: ' + err.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🚀 スプレッドシートに送信';
+  }
+}
+
+// ログ管理
+function addLog(barcode, qty, datetime, status) {
+  const id = Date.now();
+  logs.unshift({ id, barcode, qty, datetime, status });
+  renderLogs();
+  return id;
+}
+
+function updateLog(id, status) {
+  const item = logs.find(l => l.id === id);
+  if (item) { item.status = status; renderLogs(); }
+}
+
+function renderLogs() {
+  const list = document.getElementById('logList');
+  document.getElementById('logCount').textContent = logs.length + '件';
+
+  if (logs.length === 0) {
+    list.innerHTML = '<div class="log-empty">まだ送信履歴がありません</div>';
+    return;
+  }
+
+  const statusLabel = { ok: '✓ 完了', err: '✗ エラー', pending: '⋯ 送信中' };
+  list.innerHTML = logs.map(l => `
+    <div class="log-item">
+      <div class="log-barcode">${l.barcode}</div>
+      <div class="log-status ${l.status}">${statusLabel[l.status]}</div>
+      <div class="log-qty">数量: ${l.qty}</div>
+      <div class="log-time">${l.datetime}</div>
+    </div>
+  `).join('');
+}
+
+// トースト
+let toastTimer;
+function showToast(msg, isError = false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (isError ? ' error' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.classList.remove('show'); }, 2800);
+}
+</script>
+</body>
+</html>

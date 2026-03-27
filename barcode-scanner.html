@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>在庫スキャナー</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+  :root {
+    --bg:#0d1117;--surface:#161b22;--border:#30363d;
+    --accent:#4285f4;--accent2:#34a853;--text:#e6edf3;--muted:#7d8590;
+    --success:#3fb950;--error:#f85149;--warning:#d29922;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+  header{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:100}
+  .dot{width:8px;height:8px;background:var(--accent);border-radius:50%;box-shadow:0 0 8px var(--accent);animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  header h1{font-size:17px;font-weight:700}
+  header span{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted);margin-left:auto}
+  .container{padding:16px;max-width:480px;margin:0 auto}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:14px;overflow:hidden}
+  .card-title{padding:12px 16px;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;display:flex;align-items:center;justify-content:space-between}
+  .card-body{padding:16px}
+  .field-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;display:block;margin-bottom:6px}
+  input[type=password],input[type=url],select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:10px 12px;font-family:'Share Tech Mono',monospace;font-size:13px;border-radius:6px;outline:none;transition:border-color .2s;margin-bottom:10px}
+  input:focus,select:focus{border-color:var(--accent)}
+  input::placeholder{color:#444}
+  select option{background:var(--surface)}
+
+  .photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+  .photo-thumb{position:relative;aspect-ratio:1;border-radius:6px;overflow:hidden;background:#111;border:1px solid var(--border)}
+  .photo-thumb img{width:100%;height:100%;object-fit:cover}
+  .remove-btn{position:absolute;top:4px;right:4px;width:22px;height:22px;background:rgba(248,81,73,.9);border:none;border-radius:50%;color:#fff;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700}
+  .status-badge{position:absolute;bottom:0;left:0;right:0;font-size:10px;font-weight:700;padding:3px 4px;text-align:center}
+  .status-badge.pending{background:rgba(20,20,20,.85);color:var(--muted)}
+  .status-badge.analyzing{background:rgba(66,133,244,.92);color:#fff}
+  .status-badge.ok{background:rgba(52,168,83,.92);color:#fff}
+  .status-badge.error{background:rgba(248,81,73,.92);color:#fff}
+  .label-count{position:absolute;top:4px;left:4px;background:rgba(52,168,83,.9);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;display:none}
+  .label-count.show{display:block}
+  .add-btn{aspect-ratio:1;border-radius:6px;border:2px dashed var(--border);background:transparent;color:var(--muted);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:11px;transition:border-color .2s}
+  .add-btn:active{border-color:var(--accent)}
+  .add-btn .plus{font-size:26px;line-height:1}
+
+  .progress-wrap{margin-bottom:10px;display:none}
+  .progress-wrap.show{display:block}
+  .progress-label{font-size:12px;color:var(--muted);margin-bottom:5px}
+  .progress-bar{height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+  .progress-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .3s;width:0%}
+
+  /* エラーログ */
+  .err-log{background:#160808;border:1px solid #5a1a1a;border-radius:8px;padding:10px 12px;margin-bottom:10px;display:none;max-height:120px;overflow-y:auto}
+  .err-log.show{display:block}
+  .err-log p{font-family:'Share Tech Mono',monospace;font-size:11px;color:#ff8080;line-height:1.6;word-break:break-all}
+
+  .btn{width:100%;padding:14px;border:none;border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:8px}
+  .btn:active{opacity:.8;transform:scale(.98)}
+  .btn:disabled{background:var(--border)!important;color:var(--muted)!important;cursor:not-allowed;transform:none}
+  .btn-green{background:var(--accent2);color:#fff}
+  .btn-blue{background:var(--accent);color:#fff}
+  .btn-dark{background:#21262d;color:var(--text);border:1px solid var(--border)}
+
+  .result-item{background:var(--bg);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden}
+  .result-head{display:grid;grid-template-columns:56px 1fr}
+  .result-head img{width:56px;height:56px;object-fit:cover;border-right:1px solid var(--border)}
+  .result-head-info{padding:8px 10px;display:flex;align-items:center;gap:6px}
+  .result-head-info span{font-size:12px;color:var(--muted)}
+  .result-head-info strong{font-size:13px;color:var(--accent2)}
+  .label-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:10px 12px;border-top:1px solid var(--border)}
+  .linfo .barcode{font-family:'Share Tech Mono',monospace;font-size:14px;font-weight:700;color:var(--accent)}
+  .linfo .date{font-size:11px;color:var(--accent2);margin-top:3px}
+  .linfo .lerr{font-size:11px;color:var(--error)}
+  .qty-mini{display:flex;align-items:center;gap:5px}
+  .qty-mini button{width:28px;height:28px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center}
+  .qty-mini input{width:34px;text-align:center;background:transparent;border:none;color:var(--text);font-family:'Share Tech Mono',monospace;font-size:14px;font-weight:700;outline:none}
+
+  .dt-box{font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--accent);background:var(--bg);border:1px solid var(--border);padding:10px 12px;border-radius:8px;margin-bottom:12px}
+  .summary{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;display:none;justify-content:space-between;align-items:center;margin-bottom:12px}
+  .summary.show{display:flex}
+  .summary span{font-size:13px;color:var(--muted)}
+  .summary strong{font-family:'Share Tech Mono',monospace;color:var(--accent)}
+
+  .log-head{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+  .log-head span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}
+  .log-badge{font-family:'Share Tech Mono',monospace;font-size:11px;background:var(--accent);color:#fff;padding:2px 8px;border-radius:20px;font-weight:700}
+  .log-body{max-height:260px;overflow-y:auto}
+  .log-item{padding:10px 16px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1fr auto;gap:2px}
+  .log-item:last-child{border-bottom:none}
+  .log-code{font-family:'Share Tech Mono',monospace;font-size:13px;font-weight:700}
+  .log-meta{font-size:11px;color:var(--muted);margin-top:2px}
+  .log-st{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;align-self:center}
+  .log-st.ok{background:rgba(63,185,80,.15);color:var(--success)}
+  .log-st.err{background:rgba(248,81,73,.15);color:var(--error)}
+  .log-st.pending{background:rgba(210,153,34,.15);color:var(--warning)}
+  .log-empty{padding:28px;text-align:center;color:var(--muted);font-size:13px}
+
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--surface);color:var(--text);border:1px solid var(--border);padding:12px 20px;border-radius:8px;font-size:14px;font-weight:700;z-index:999;transition:transform .3s cubic-bezier(.34,1.56,.64,1);border-left:3px solid var(--success);max-width:88vw;text-align:center}
+  .toast.show{transform:translateX(-50%) translateY(0)}
+  .toast.error{border-left-color:var(--error)}
+  .spinner{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #fileInput{display:none}
+</style>
+</head>
+<body>
+<header>
+  <div class="dot"></div>
+  <h1>在庫スキャナー</h1>
+  <span>v5.5 FIXED</span>
+</header>
+<div class="container">
+
+  <div class="card">
+    <div class="card-title">🔑 Gemini API Key &amp; モデル</div>
+    <div class="card-body">
+      <label class="field-label">API Key</label>
+      <input type="password" id="apiKey" placeholder="AIza..." />
+      <label class="field-label">モデル</label>
+      <select id="modelSelect">
+        <option value="gemini-2.5-flash-preview-05-20">gemini-2.5-flash（最新・推奨）</option>
+        <option value="gemini-2.5-pro-preview-05-06">gemini-2.5-pro（高精度）</option>
+        <option value="gemini-2.0-flash-lite-001">gemini-2.0-flash-lite（高速）</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      <span>📸 ラベル写真</span>
+      <span id="photoCount" style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--accent)">0枚</span>
+    </div>
+    <div class="card-body">
+      <div class="photo-grid" id="photoGrid">
+        <button class="add-btn" onclick="document.getElementById('fileInput').click()">
+          <div class="plus">＋</div>追加
+        </button>
+      </div>
+      <input type="file" id="fileInput" accept="image/*" multiple onchange="onPhotos(event)" />
+      <div class="progress-wrap" id="progressWrap">
+        <div class="progress-label" id="progressLabel">解析中...</div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      </div>
+      <div class="err-log" id="errLog"><p id="errText"></p></div>
+      <button class="btn btn-green" id="btnAnalyze" onclick="analyzeAll()" disabled>✨ Gemini で解析</button>
+      <button class="btn btn-dark" onclick="clearAll()">🗑 すべてクリア</button>
+    </div>
+  </div>
+
+  <div class="card" id="resultCard" style="display:none">
+    <div class="card-title">
+      <span>📋 解析結果</span>
+      <span id="resultCount" style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--accent2)"></span>
+    </div>
+    <div class="card-body" style="padding:12px"><div id="resultList"></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🚀 送信設定</div>
+    <div class="card-body">
+      <label class="field-label">スキャン日時</label>
+      <div class="dt-box" id="dtBox">--</div>
+      <label class="field-label">Google Apps Script URL</label>
+      <input type="url" id="gasUrl" placeholder="https://script.google.com/macros/s/..." />
+      <div class="summary" id="summary"><span>送信件数</span><strong id="summaryCount">0件</strong></div>
+      <button class="btn btn-blue" id="btnSubmit" onclick="submitAll()" disabled>📊 スプレッドシートに一括送信</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:32px">
+    <div class="log-head"><span>送信ログ</span><span class="log-badge" id="logBadge">0</span></div>
+    <div class="log-body" id="logBody"><div class="log-empty">まだ送信履歴がありません</div></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+setInterval(()=>{
+  document.getElementById('dtBox').textContent=new Date().toLocaleString('ja-JP',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+},1000);
+
+let photos=[],logs=[],nextId=1,allLabels=[];
+
+// ★修正1: 画像をCanvas経由でリサイズ&JPEG変換してから送信
+function resizeImage(dataUrl, maxSize=1200) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      let {width:w, height:h} = img;
+      if (w > maxSize || h > maxSize) {
+        if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
+        else { w = Math.round(w * maxSize / h); h = maxSize; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      // ★修正2: 常にimage/jpegで出力
+      const resized = canvas.toDataURL('image/jpeg', 0.88);
+      resolve(resized);
+    };
+    img.src = dataUrl;
+  });
+}
+
+function onPhotos(e) {
+  Array.from(e.target.files).forEach(async file => {
+    const reader = new FileReader();
+    reader.onload = async ev => {
+      const original = ev.target.result;
+      // リサイズ処理
+      const resized = await resizeImage(original, 1200);
+      const base64 = resized.split(',')[1];
+      photos.push({id:nextId++, dataUrl:resized, base64, mime:'image/jpeg', status:'pending', labels:[]});
+      renderGrid();
+    };
+    reader.readAsDataURL(file);
+  });
+  e.target.value = '';
+}
+
+function renderGrid() {
+  document.getElementById('photoCount').textContent = photos.length + '枚';
+  let html = photos.map(p => `
+    <div class="photo-thumb" id="thumb-${p.id}">
+      <img src="${p.dataUrl}" />
+      <button class="remove-btn" onclick="removePhoto(${p.id})">✕</button>
+      <div class="label-count ${p.labels.length>0?'show':''}" id="lcount-${p.id}">${p.labels.length}件</div>
+      <div class="status-badge ${p.status}" id="badge-${p.id}">
+        ${p.status==='ok'?`✓ ${p.labels.length}件`:p.status==='pending'?'未解析':p.status==='analyzing'?'解析中...':'✗ 失敗'}
+      </div>
+    </div>`).join('');
+  html += `<button class="add-btn" onclick="document.getElementById('fileInput').click()"><div class="plus">＋</div>追加</button>`;
+  document.getElementById('photoGrid').innerHTML = html;
+  document.getElementById('btnAnalyze').disabled = photos.length === 0;
+  updateSubmitBtn();
+}
+
+function removePhoto(id) { photos=photos.filter(p=>p.id!==id); renderGrid(); renderResults(); }
+function clearAll() {
+  photos=[]; allLabels=[];
+  renderGrid(); renderResults();
+  document.getElementById('resultCard').style.display='none';
+  document.getElementById('errLog').classList.remove('show');
+}
+
+async function analyzeAll() {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  const model = document.getElementById('modelSelect').value;
+  if (!apiKey) { showToast('⚠️ APIキーを入力してください', true); return; }
+  if (!photos.length) { showToast('⚠️ 写真を選択してください', true); return; }
+
+  document.getElementById('btnAnalyze').disabled = true;
+  document.getElementById('progressWrap').classList.add('show');
+  document.getElementById('errLog').classList.remove('show');
+  allLabels = [];
+  const errMessages = [];
+
+  for (let i=0; i<photos.length; i++) {
+    const p = photos[i];
+    p.status = 'analyzing'; p.labels = [];
+    updateBadge(p);
+    document.getElementById('progressLabel').textContent = `${model} 解析中: ${i+1}/${photos.length}枚`;
+    document.getElementById('progressFill').style.width = ((i+1)/photos.length*100) + '%';
+
+    try {
+      const labels = await callGemini(apiKey, model, p.base64);
+      p.labels = labels.map(l=>({...l, qty:1}));
+      p.status = p.labels.length > 0 ? 'ok' : 'error';
+      if (p.labels.length === 0) errMessages.push(`写真${i+1}: ラベルが0件でした`);
+      allLabels.push(...p.labels.map(l=>({...l, dataUrl:p.dataUrl})));
+    } catch(e) {
+      p.status = 'error';
+      errMessages.push(`写真${i+1}: ${e.message}`);
+    }
+    updateBadge(p);
+    if (i < photos.length-1) await sleep(model.includes('pro-latest') ? 2500 : 1000);
+  }
+
+  document.getElementById('progressWrap').classList.remove('show');
+  document.getElementById('btnAnalyze').disabled = false;
+
+  if (errMessages.length > 0) {
+    document.getElementById('errLog').classList.add('show');
+    document.getElementById('errText').textContent = errMessages.join('\n');
+  }
+
+  renderResults();
+  const ok = photos.filter(p=>p.status==='ok').length;
+  showToast(ok > 0 ? `✅ ${allLabels.length}件検出！` : '❌ 読み取り失敗', ok === 0);
+  updateSubmitBtn();
+}
+
+// ★修正3: 堅牢なGemini呼び出し
+async function callGemini(apiKey, model, base64) {
+  const prompt = `この画像にはSashimifilletの真空パック袋のラベルシールが写っています。
+
+各ラベルから以下を読み取ってください：
+1. 品番コード：バーコードの下の英数字（必ず21で始まる。例：21MASA0001B、21SGSA00019、21KRSA00016、21KMSA00013）
+2. 製造日：「ผลิต」の下の日付（YYYY-MM-DD形式。例：2026-03-10）
+
+ラベルが複数ある場合はすべて読み取ってください。
+
+返答はJSON配列のみ。説明不要：
+[{"barcode":"21XXXXX","date":"YYYY-MM-DD"}]`;
+
+  let res;
+  try {
+    res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          contents: [{parts: [
+            {text: prompt},
+            // ★修正2: mimeは常にimage/jpeg
+            {inline_data: {mime_type: 'image/jpeg', data: base64}}
+          ]}],
+          generationConfig: {temperature: 0, maxOutputTokens: 1000}
+        })
+      }
+    );
+  } catch(e) {
+    throw new Error('通信エラー: ' + e.message);
+  }
+
+  let data;
+  try {
+    data = await res.json();
+  } catch(e) {
+    throw new Error('レスポンス解析エラー (HTTP ' + res.status + ')');
+  }
+
+  if (data.error) {
+    throw new Error('API ' + data.error.code + ': ' + data.error.message);
+  }
+
+  if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
+    // finishReasonを確認
+    const reason = data.candidates?.[0]?.finishReason || '不明';
+    throw new Error('レスポンス異常 finishReason=' + reason);
+  }
+
+  const text = data.candidates[0].content.parts[0].text.trim();
+
+  // ★修正4: より堅牢なJSONパース（コードブロック対応）
+  // ```json [...] ``` や ``` [...] ``` を除去
+  let cleaned = text
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*/g, '')
+    .trim();
+
+  // JSON配列を抽出
+  const match = cleaned.match(/\[\s*\{[\s\S]*\}\s*\]/);
+  if (!match) {
+    // Geminiが空配列を返した場合
+    if (cleaned.includes('[]') || cleaned.trim() === '[]') return [];
+    throw new Error('JSON未検出。返答: ' + text.slice(0, 150));
+  }
+
+  try {
+    const parsed = JSON.parse(match[0]);
+    // 空のエントリを除去
+    return parsed.filter(l => l.barcode || l.date);
+  } catch(e) {
+    throw new Error('JSONパース失敗: ' + match[0].slice(0, 100));
+  }
+}
+
+function updateBadge(p) {
+  const badge = document.getElementById('badge-'+p.id);
+  const lcount = document.getElementById('lcount-'+p.id);
+  if (badge) {
+    badge.className = 'status-badge ' + p.status;
+    badge.textContent = p.status==='ok'?`✓ ${p.labels.length}件`:p.status==='pending'?'未解析':p.status==='analyzing'?'解析中...':'✗ 失敗';
+  }
+  if (lcount) { lcount.textContent=p.labels.length+'件'; lcount.className='label-count'+(p.labels.length>0?' show':''); }
+}
+
+function renderResults() {
+  const done = photos.filter(p=>p.status==='ok'||p.status==='error');
+  if (!done.length) return;
+  document.getElementById('resultCard').style.display = 'block';
+  document.getElementById('resultCount').textContent = `合計 ${allLabels.length}件`;
+  let html = '';
+  done.forEach((p,pi) => {
+    html += `<div class="result-item">
+      <div class="result-head">
+        <img src="${p.dataUrl}" />
+        <div class="result-head-info"><span>写真${pi+1}</span><strong>${p.labels.length}件検出</strong></div>
+      </div>`;
+    if (!p.labels.length) {
+      html += `<div class="label-row"><div class="linfo"><div class="lerr">❌ 読み取り失敗</div></div></div>`;
+    } else {
+      p.labels.forEach((l,li) => {
+        html += `<div class="label-row">
+          <div class="linfo">
+            <div class="barcode">${l.barcode||'(未読取)'}</div>
+            <div class="date">📅 ${l.date||'日付不明'}</div>
+          </div>
+          <div class="qty-mini">
+            <button onclick="changeQty(${p.id},${li},1)">＋</button>
+            <input type="number" id="qty-${p.id}-${li}" value="${l.qty}" min="1" max="999" onchange="updateQty(${p.id},${li},this.value)" />
+            <button onclick="changeQty(${p.id},${li},-1)">−</button>
+          </div>
+        </div>`;
+      });
+    }
+    html += `</div>`;
+  });
+  document.getElementById('resultList').innerHTML = html;
+  updateSubmitBtn();
+}
+
+function changeQty(pid,li,d) {
+  const p=photos.find(x=>x.id===pid); if(!p||!p.labels[li])return;
+  p.labels[li].qty=Math.max(1,Math.min(999,p.labels[li].qty+d));
+  const el=document.getElementById(`qty-${pid}-${li}`); if(el) el.value=p.labels[li].qty;
+  syncAllLabels();
+}
+function updateQty(pid,li,val) {
+  const p=photos.find(x=>x.id===pid); if(!p||!p.labels[li])return;
+  p.labels[li].qty=Math.max(1,Math.min(999,parseInt(val)||1)); syncAllLabels();
+}
+function syncAllLabels() {
+  allLabels=[];
+  photos.filter(p=>p.status==='ok').forEach(p=>{allLabels.push(...p.labels.map(l=>({...l,dataUrl:p.dataUrl})));});
+  updateSubmitBtn();
+}
+function updateSubmitBtn() {
+  const count=allLabels.filter(l=>l.barcode||l.date).length;
+  document.getElementById('btnSubmit').disabled=count===0;
+  if(count>0){document.getElementById('summary').classList.add('show');document.getElementById('summaryCount').textContent=count+'件';}
+  else document.getElementById('summary').classList.remove('show');
+}
+
+async function submitAll() {
+  const gasUrl=document.getElementById('gasUrl').value.trim();
+  if(!gasUrl){showToast('⚠️ Apps Script URLを入力してください',true);return;}
+  const targets=allLabels.filter(l=>l.barcode||l.date);
+  if(!targets.length)return;
+  const btn=document.getElementById('btnSubmit');
+  btn.disabled=true; btn.innerHTML='<div class="spinner"></div> 送信中...';
+  const dt=document.getElementById('dtBox').textContent;
+  let ok=0;
+  for(const l of targets){
+    const logId=addLog(l.barcode,l.date,l.qty,dt,'pending');
+    try{
+      await fetch(gasUrl,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({barcode:l.barcode,mfg_date:l.date,quantity:l.qty,datetime:dt})});
+      updateLog(logId,'ok'); ok++;
+    }catch(e){updateLog(logId,'err');}
+    await sleep(200);
+  }
+  showToast(`✅ ${ok}件送信完了！`);
+  clearAll();
+  btn.disabled=false; btn.innerHTML='📊 スプレッドシートに一括送信';
+}
+
+function addLog(code,date,qty,dt,status){const id=Date.now()+Math.random();logs.unshift({id,code,date,qty,dt,status});renderLogs();return id;}
+function updateLog(id,status){const item=logs.find(l=>l.id===id);if(item){item.status=status;renderLogs();}}
+function renderLogs(){
+  document.getElementById('logBadge').textContent=logs.length;
+  const body=document.getElementById('logBody');
+  if(!logs.length){body.innerHTML='<div class="log-empty">まだ送信履歴がありません</div>';return;}
+  const lbl={ok:'✓ 完了',err:'✗ エラー',pending:'⋯ 送信中'};
+  body.innerHTML=logs.map(l=>`
+    <div class="log-item">
+      <div><div class="log-code">${l.code||'(未読取)'}</div><div class="log-meta">製造日:${l.date||'-'} 数量:${l.qty} ${l.dt}</div></div>
+      <div class="log-st ${l.status}">${lbl[l.status]}</div>
+    </div>`).join('');
+}
+
+let toastTimer;
+function showToast(msg,isErr=false){
+  const el=document.getElementById('toast'); el.textContent=msg;
+  el.className='toast show'+(isErr?' error':'');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),3500);
+}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+</script>
+</body>
+</html>

@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>手書きメモスキャナー</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+  :root{
+    --bg:#0a0f1e;--surface:#111827;--border:#1f2937;
+    --accent:#f59e0b;--accent2:#10b981;--text:#f9fafb;--muted:#6b7280;
+    --success:#10b981;--error:#ef4444;--warning:#f59e0b;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;
+    background-image:radial-gradient(ellipse at top,#1a1f3a 0%,var(--bg) 60%)}
+  header{background:rgba(17,24,39,.95);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);
+    padding:14px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:100}
+  .dot{width:8px;height:8px;background:var(--accent);border-radius:50%;box-shadow:0 0 12px var(--accent);animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(.8)}}
+  header h1{font-size:17px;font-weight:900;letter-spacing:.05em}
+  header span{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--muted);margin-left:auto;
+    background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);padding:2px 8px;border-radius:20px}
+  .container{padding:16px;max-width:480px;margin:0 auto}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:14px;overflow:hidden;
+    box-shadow:0 4px 20px rgba(0,0,0,.3)}
+  .card-title{padding:12px 16px;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted);
+    text-transform:uppercase;letter-spacing:.1em;display:flex;align-items:center;justify-content:space-between}
+  .card-body{padding:16px}
+  .flabel{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;display:block;margin-bottom:6px}
+  .finput{width:100%;background:rgba(0,0,0,.3);border:1px solid var(--border);color:var(--text);
+    padding:10px 12px;font-family:'Share Tech Mono',monospace;font-size:13px;border-radius:8px;
+    outline:none;transition:border-color .2s;margin-bottom:12px}
+  .finput:focus{border-color:var(--accent)}
+  .finput::placeholder{color:#374151}
+  select.finput option{background:var(--surface)}
+  .photo-area{position:relative;width:100%;min-height:220px;background:#000;border-radius:8px;
+    overflow:hidden;cursor:pointer;margin-bottom:12px;border:2px dashed var(--border);
+    display:flex;align-items:center;justify-content:center;transition:border-color .2s}
+  .photo-area:active{border-color:var(--accent)}
+  .photo-area img{width:100%;height:100%;object-fit:contain;display:none}
+  .photo-area img.show{display:block}
+  .photo-placeholder{display:flex;flex-direction:column;align-items:center;gap:12px;color:var(--muted);padding:40px;text-align:center}
+  .photo-placeholder.hide{display:none}
+  .photo-icon{font-size:52px;opacity:.5}
+  .photo-placeholder p{font-size:14px;line-height:1.6}
+  .photo-placeholder small{font-size:12px;color:#374151}
+  .btn{width:100%;padding:14px;border:none;border-radius:10px;font-family:'Noto Sans JP',sans-serif;
+    font-size:15px;font-weight:700;cursor:pointer;transition:all .15s;display:flex;
+    align-items:center;justify-content:center;gap:8px;margin-bottom:8px}
+  .btn:active{opacity:.8;transform:scale(.98)}
+  .btn:disabled{background:var(--border)!important;color:var(--muted)!important;cursor:not-allowed;transform:none}
+  .btn-amber{background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;font-weight:900;
+    box-shadow:0 4px 15px rgba(245,158,11,.3)}
+  .btn-green{background:linear-gradient(135deg,#10b981,#059669);color:#fff;
+    box-shadow:0 4px 15px rgba(16,185,129,.3)}
+  .btn-dark{background:rgba(255,255,255,.05);color:var(--muted);border:1px solid var(--border)}
+  .analyzing{display:none;align-items:center;justify-content:center;gap:12px;
+    padding:20px;color:var(--muted);font-size:14px;margin-bottom:8px}
+  .analyzing.show{display:flex}
+  .spinner{width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);
+    border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .table-wrap{overflow-x:auto;margin-bottom:12px}
+  .result-table{width:100%;border-collapse:collapse;font-size:12px;min-width:400px}
+  .result-table th{background:rgba(245,158,11,.1);color:var(--accent);padding:8px 6px;
+    text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--border);white-space:nowrap}
+  .result-table td{padding:6px 6px;border-bottom:1px solid rgba(31,41,55,.5);vertical-align:middle}
+  .result-table tr:last-child td{border-bottom:none}
+  .result-table tr:hover td{background:rgba(255,255,255,.02)}
+  .result-table input[type=text],.result-table input[type=number]{
+    background:transparent;border:none;color:var(--text);font-family:'Share Tech Mono',monospace;
+    font-size:12px;width:100%;outline:none;padding:2px 3px;border-radius:4px;min-width:0}
+  .result-table input:focus{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3)}
+  .official-name{color:var(--accent2);font-size:11px;font-family:'Share Tech Mono',monospace}
+  .del-btn{width:22px;height:22px;background:rgba(239,68,68,.2);border:1px solid rgba(239,68,68,.3);
+    color:#ef4444;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    font-size:11px;font-weight:700;flex-shrink:0}
+  .del-btn:active{background:rgba(239,68,68,.4)}
+  .add-row-btn{width:100%;padding:8px;background:transparent;border:1px dashed var(--border);
+    color:var(--muted);border-radius:8px;cursor:pointer;font-size:13px;margin-bottom:12px;
+    transition:all .2s;font-family:'Noto Sans JP',sans-serif}
+  .add-row-btn:active{border-color:var(--accent);color:var(--accent)}
+  .err-log{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;
+    padding:10px 12px;margin-bottom:10px;display:none}
+  .err-log.show{display:block}
+  .err-log p{font-size:12px;color:#fca5a5;line-height:1.6;word-break:break-all}
+  .dt-box{font-family:'Share Tech Mono',monospace;font-size:13px;color:var(--accent);
+    background:rgba(0,0,0,.3);border:1px solid var(--border);padding:10px 12px;border-radius:8px;margin-bottom:12px}
+  .summary{background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.2);border-radius:8px;
+    padding:10px 14px;display:none;justify-content:space-between;align-items:center;margin-bottom:12px}
+  .summary.show{display:flex}
+  .summary span{font-size:13px;color:var(--muted)}
+  .summary strong{font-family:'Share Tech Mono',monospace;color:var(--accent2);font-size:15px}
+  .log-head{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+  .log-head span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}
+  .log-badge{font-family:'Share Tech Mono',monospace;font-size:11px;background:var(--accent);
+    color:#000;padding:2px 8px;border-radius:20px;font-weight:700}
+  .log-body{max-height:260px;overflow-y:auto}
+  .log-item{padding:10px 16px;border-bottom:1px solid var(--border);animation:fadeIn .2s ease}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+  .log-item:last-child{border-bottom:none}
+  .log-main{font-size:13px;font-weight:700;margin-bottom:3px}
+  .log-meta{font-size:11px;color:var(--muted)}
+  .log-st{float:right;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;margin-top:2px}
+  .log-st.ok{background:rgba(16,185,129,.15);color:var(--success)}
+  .log-st.err{background:rgba(239,68,68,.15);color:var(--error)}
+  .log-st.pending{background:rgba(245,158,11,.15);color:var(--warning)}
+  .log-empty{padding:28px;text-align:center;color:var(--muted);font-size:13px}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(80px);
+    background:var(--surface);color:var(--text);border:1px solid var(--border);
+    padding:12px 20px;border-radius:10px;font-size:14px;font-weight:700;z-index:999;
+    transition:transform .3s cubic-bezier(.34,1.56,.64,1);border-left:3px solid var(--success);
+    max-width:88vw;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+  .toast.show{transform:translateX(-50%) translateY(0)}
+  .toast.error{border-left-color:var(--error)}
+  .btn-spinner{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.3);
+    border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
+</style>
+</head>
+<body>
+<header>
+  <div class="dot"></div>
+  <h1>✍️ 手書きメモスキャナー</h1>
+  <span>GYOTAK v4.2</span>
+</header>
+
+<div class="container">
+
+  <div class="card">
+    <div class="card-title">🔑 Gemini API Key &amp; モデル</div>
+    <div class="card-body">
+      <label class="flabel">API Key</label>
+      <input type="password" class="finput" id="apiKey" placeholder="AIza..." onchange="saveSettings()" onblur="saveSettings()" />
+      <button class="btn-check" onclick="fetchModels()">🔍 使えるモデルを確認する</button>
+      <label class="flabel">モデル</label>
+      <select class="finput" id="modelSelect" onchange="saveSettings()">
+        <option value="gemini-2.5-flash">gemini-2.5-flash（推奨）</option>
+        <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
+        <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📸 手書きメモの写真</div>
+    <div class="card-body" style="padding:12px">
+      <div id="photoGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;min-height:80px">
+        <div onclick="document.getElementById('fileInput').click()" style="aspect-ratio:1;border-radius:8px;border:2px dashed var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--muted);cursor:pointer;font-size:12px">
+          <div style="font-size:28px">＋</div><span>追加</span>
+        </div>
+      </div>
+      <input type="file" id="fileInput" accept="image/*" multiple style="display:none" onchange="onPhotos(event)" />
+      <button class="btn btn-dark" onclick="document.getElementById('fileInput').click()">📷 写真を選択（複数可）</button>
+      <div class="analyzing" id="analyzing">
+        <div class="spinner"></div>
+        <span>Geminiが解析中...</span>
+      </div>
+      <div class="err-log" id="errLog"><p id="errText"></p></div>
+      <button class="btn btn-amber" id="btnAnalyze" onclick="analyzePhoto()" disabled>✨ Geminiで解析</button>
+    </div>
+  </div>
+
+  <div class="card" id="resultCard" style="display:none">
+    <div class="card-title">
+      <span>📋 解析結果（編集可）</span>
+      <span id="rowCount" style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--accent)"></span>
+    </div>
+    <div class="card-body" style="padding:12px">
+      <div class="table-wrap">
+        <table class="result-table">
+          <thead>
+            <tr>
+              <th style="min-width:90px">手書き名</th>
+              <th style="min-width:110px">正式名(DB)</th>
+              <th style="min-width:70px">status</th>
+              <th style="min-width:75px">日付</th>
+              <th style="min-width:50px">重量g</th>
+              <th style="min-width:80px">顧客名</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="resultBody"></tbody>
+        </table>
+      </div>
+      <button class="add-row-btn" onclick="addRow()">＋ 行を追加</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🚀 送信設定</div>
+    <div class="card-body">
+      <label class="flabel">処理日時</label>
+      <div class="dt-box" id="dtBox">--</div>
+      <label class="flabel">Google Apps Script URL</label>
+      <input type="url" class="finput" id="gasUrl" placeholder="https://script.google.com/macros/s/..." onchange="saveSettings()" onblur="saveSettings()" />
+      <div class="summary" id="summary"><span>送信件数</span><strong id="summaryCount">0件</strong></div>
+      <button class="btn btn-green" id="btnSubmit" onclick="submitAll()" disabled>📊 スプレッドシートに送信</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:32px">
+    <div class="log-head"><span>送信ログ</span><span class="log-badge" id="logBadge">0</span></div>
+    <div class="log-body" id="logBody"><div class="log-empty">まだ送信履歴がありません</div></div>
+  </div>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ====== 魚名対応表 ======
+const FISH_MAP = `
+手書き略称 → 正式DB名（対応表）
+Kanpachi / Kanpchi / Kampachi / Konpachi → Kuro-Kanpachi
+Aori Ika / Aori-Ika → Aori-Ika
+Aori whole / Aori Whole → Aori-Ika WHOLE
+Kamacu / Kamazu / Kamazcu / Kamazu → Oo-Kamasu
+Koro-Dai / Koro Dai / KoroDai / Koro Doe → Koro-Dai
+Modoki / Medoki / Mdoki / Modeki / Madoki → Kuro-Aji-Modoki
+Umadsura / Vmadsura / Umadsvra / Umadsva / Umasura / Umadsura → Umadsura-Aji
+Maguro → Koshinaga-Maguro
+Tsabame / Tsubame → Tsubame-Konoshiro
+Yoroi → Yoroi-Aji
+Oni → Oni-Aji
+Sawara / Samara → Yokoshima-Sawara
+Hoshi Kaiwari / Hoshikaiwari / Hoshi kaiwari → Hoshi-Kaiwari
+Kurohoshi → Kurohoshi-Fuedai
+Ikekatsuo / IkeKatsuo / Ike Katsuo / Ikakatsuo → Ookuchi-Ikekatsuo
+He-Dai / HeDai → He-Dai
+Tate → Tate-Fuedai
+Katsuo skin / Katsuo no skin / Restore Katsuo skin / Katsuo → Katsuo（suma）
+Male / Mate / Mate-Aji → Mate-Aji
+Matsu / Matsc / Matscr → Matsu-Dai
+Shrimp → Banamei-Ebi（with shell）
+Mabuta / Mabcita → Mabuta-Shimaaji
+Kimchi / Kimchi fish → FIsh Kimchi
+Soy marineted / Soy marinated → Soy Marinated
+Chiri / Chm → Oni-Aji
+Gingame → Gingame-Aji
+`;
+
+async function fetchModels() {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  if (!apiKey) { showToast('APIキーを入力してください', true); return; }
+  showToast('モデル一覧を取得中...');
+  try {
+    const res = await fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`, {}, 10000);
+    const data = await res.json();
+    if (data.error) { showToast('エラー: ' + data.error.message, true); return; }
+    const models = data.models
+      .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent'))
+      .map(m => m.name.replace('models/', ''));
+    const sel = document.getElementById('modelSelect');
+    sel.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
+    for (let opt of sel.options) { if (opt.value === 'gemini-2.5-flash') { opt.selected = true; break; } }
+    showToast('✅ ' + models.length + '件取得しました');
+  } catch(e) {
+    showToast('取得失敗: ' + e.message, true);
+  }
+}
+
+function saveSettings() {
+  const k = document.getElementById('apiKey').value.trim();
+  const m = document.getElementById('modelSelect').value;
+  const g = document.getElementById('gasUrl').value.trim();
+  if (k) localStorage.setItem('gyotak_memo_apikey', k);
+  if (m) localStorage.setItem('gyotak_memo_model', m);
+  if (g) localStorage.setItem('gyotak_memo_gasurl', g);
+}
+
+function loadSettings() {
+  const k = localStorage.getItem('gyotak_memo_apikey');
+  let m = localStorage.getItem('gyotak_memo_model');
+  const g = localStorage.getItem('gyotak_memo_gasurl');
+  if (k) document.getElementById('apiKey').value = k;
+  if (g) document.getElementById('gasUrl').value = g;
+  // 古いモデル名を自動で新しいモデルに置き換え
+  if (m === 'gemini-2.0-flash' || m === 'gemini-2.0-flash-001' || m === 'gemini-2.0-flash-lite' || m === 'gemini-flash-latest') {
+    m = 'gemini-2.5-flash';
+    localStorage.setItem('gyotak_memo_model', m);
+  }
+  if (m) {
+    const sel = document.getElementById('modelSelect');
+    let found = false;
+    for (let opt of sel.options) { if (opt.value === m) { opt.selected = true; found = true; break; } }
+    if (!found) { const opt = document.createElement('option'); opt.value = m; opt.text = m; opt.selected = true; sel.appendChild(opt); }
+  }
+}
+
+setInterval(() => {
+  document.getElementById('dtBox').textContent = new Date().toLocaleString('ja-JP', {year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}, 1000);
+
+function resizeImage(dataUrl, maxSize) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('タイムアウト')), 10000);
+    const img = new Image();
+    img.onerror = () => { clearTimeout(timer); reject(new Error('画像読み込み失敗')); };
+    img.onload = () => {
+      clearTimeout(timer);
+      let w = img.width, h = img.height;
+      if (w > maxSize || h > maxSize) {
+        if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
+        else { w = Math.round(w * maxSize / h); h = maxSize; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.90));
+    };
+    img.src = dataUrl;
+  });
+}
+
+let photos = [];
+let nextPhotoId = 1;
+
+function onPhotos(e) {
+  const files = Array.from(e.target.files);
+  e.target.value = '';
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = async ev => {
+      try {
+        const resized = await resizeImage(ev.target.result, 1400);
+        photos.push({id: nextPhotoId++, dataUrl: resized, base64: resized.split(',')[1]});
+        renderPhotoGrid();
+        document.getElementById('btnAnalyze').disabled = false;
+      } catch(e) { showToast('画像処理失敗: ' + e.message, true); }
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function removePhoto(id) {
+  photos = photos.filter(p => p.id !== id);
+  renderPhotoGrid();
+  if (photos.length === 0) document.getElementById('btnAnalyze').disabled = true;
+}
+
+function renderPhotoGrid() {
+  const grid = document.getElementById('photoGrid');
+  let html = photos.map(p => `
+    <div style="position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;border:1px solid var(--border)">
+      <img src="${p.dataUrl}" style="width:100%;height:100%;object-fit:cover" />
+      <button onclick="removePhoto(${p.id})" style="position:absolute;top:4px;right:4px;width:22px;height:22px;background:rgba(239,68,68,.9);border:none;border-radius:50%;color:#fff;font-size:12px;cursor:pointer;font-weight:700">✕</button>
+    </div>`).join('');
+  html += `<div onclick="document.getElementById('fileInput').click()" style="aspect-ratio:1;border-radius:8px;border:2px dashed var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--muted);cursor:pointer;font-size:12px"><div style="font-size:28px">＋</div><span>追加</span></div>`;
+  grid.innerHTML = html;
+}
+
+async function analyzePhoto() {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  const model  = document.getElementById('modelSelect').value;
+  if (!apiKey) { showToast('APIキーを入力してください', true); return; }
+  if (!photos.length) { showToast('写真を選択してください', true); return; }
+
+  document.getElementById('btnAnalyze').disabled = true;
+  document.getElementById('analyzing').classList.add('show');
+  document.getElementById('errLog').classList.remove('show');
+
+  const prompt = `この画像はGYOTAKという魚の会社の在庫管理の手書きメモです。
+
+【魚名の対応表】
+手書きでは略称が使われます。以下の対応表を参考に正式名を判定してください：
+${FISH_MAP}
+
+対応表にない名前はそのまま使用してください。
+
+【重要なルール】
+1. 写真が逆さまの場合は、下から読んで上から出力してください
+2. 1パッケージ＝1行として展開してください
+3. 「180×2」→ 重量180gの行を2行
+4. 「100」（×なし）→ 重量100gの行を1行
+5. 日付がない行は直前の商品の日付を引き継ぐ
+6. 日付は月/日の形式（例：3/10、1/4、12/17）→ 年は2026年として YYYY-MM-DD形式に変換
+7. 顧客名（Khun Prae、Paris、Kappouなど）はスキップ
+8. (4 packs only)などのメモはスキップ
+9. Kondei / I will keep tomorrowなどのメモはスキップ
+
+【出力形式】
+以下のJSON配列のみを返してください。
+[{"written_name":"手書きの名前","official_name":"正式DB名","date":"2026-MM-DD","weight_g":180,"customer":"顧客名"}]
+
+顧客名はメモの最上部や各セクションの見出しに書かれていることが多いです。
+既知の顧客名：Khun Prae、Paris、Kappou、G-Hotel、Khun Milk / Khun Mulk、Matt San Place、Khun Maeda、Black Inu、Shening、Khun Philipe、Go30 / 6030、For Event、Matt San、Matt's place。
+これら以外の見出し的な単語も顧客名として判断してください。
+顧客名がわからない場合は "顧客名不明" としてください。
+
+【絶対に守ること】
+- 最初の文字は必ず [ であること
+- 最後の文字は必ず ] であること
+- \`\`\`json や \`\`\` などのコードブロックは絶対に使わないこと
+- 説明文・前置き・後書きは一切不要
+- JSONの配列のみ出力すること`;
+
+  const allItems = [];
+  const errors = [];
+
+  for (let i = 0; i < photos.length; i++) {
+    const spanEl = document.getElementById('analyzing').querySelector('span');
+    if (spanEl) spanEl.textContent = '写真' + (i+1) + '/' + photos.length + '枚を解析中...';
+    try {
+      const items = await callGeminiSingle(apiKey, model, photos[i].base64, prompt);
+      allItems.push(...items);
+      if (i < photos.length - 1) await sleep(1000);
+    } catch(e) {
+      errors.push('写真' + (i+1) + ': ' + e.message);
+    }
+  }
+
+  document.getElementById('analyzing').classList.remove('show');
+  document.getElementById('btnAnalyze').disabled = false;
+
+  if (errors.length) {
+    document.getElementById('errLog').classList.add('show');
+    document.getElementById('errText').textContent = errors.join('\n');
+  }
+
+  if (allItems.length > 0) {
+    renderResultTable(allItems);
+    showToast('✅ 合計' + allItems.length + '行検出！');
+  } else {
+    showToast('❌ 読み取り失敗', true);
+  }
+}
+
+async function callGeminiSingle(apiKey, model, base64, prompt) {
+  const res = await fetchWithTimeout(
+    'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        contents: [{parts: [
+          {text: prompt},
+          {inline_data: {mime_type: 'image/jpeg', data: base64}}
+        ]}],
+        generationConfig: {temperature: 0, maxOutputTokens: 4000}
+      })
+    },
+    40000
+  );
+  const data = await res.json();
+  if (data.error) throw new Error('API ' + data.error.code + ': ' + data.error.message);
+  if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) throw new Error('レスポンス異常');
+  const raw = data.candidates[0].content.parts[0].text;
+
+  // Step1: コードブロックを完全除去
+  let text = raw
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .trim();
+
+  // Step2: [ から ] を抽出
+  const startIdx = text.indexOf('[');
+  const endIdx = text.lastIndexOf(']');
+
+  if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
+    throw new Error('JSON未検出: ' + text.slice(0, 120));
+  }
+
+  const jsonStr = text.slice(startIdx, endIdx + 1);
+
+  try {
+    const parsed = JSON.parse(jsonStr);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch(e) {
+    throw new Error('JSONパース失敗: ' + jsonStr.slice(0, 80));
+  }
+}
+
+let tableRows = [];
+
+function renderResultTable(items) {
+  tableRows = items.map((item, i) => ({
+    id: i,
+    written_name:  item.written_name  || '',
+    official_name: item.official_name || '',
+    date:          item.date          || '',
+    weight_g:      item.weight_g      || 0,
+    status:        '',
+    customer:      item.customer      || '顧客名不明'
+  }));
+  document.getElementById('resultCard').style.display = 'block';
+  renderTable();
+}
+
+function renderTable() {
+  document.getElementById('rowCount').textContent = tableRows.length + '行';
+  const tbody = document.getElementById('resultBody');
+  tbody.innerHTML = tableRows.map((r, i) => `
+    <tr>
+      <td><input type="text" value="${escHtml(r.written_name)}" onchange="updateRow(${i},'written_name',this.value)" /></td>
+      <td><input type="text" class="official-name" value="${escHtml(r.official_name)}" onchange="updateRow(${i},'official_name',this.value)" /></td>
+      <td><input type="text" value="${escHtml(r.status)}" onchange="updateRow(${i},'status',this.value)" style="width:60px" /></td>
+      <td><input type="text" value="${escHtml(r.date)}" onchange="updateRow(${i},'date',this.value)" style="width:82px" /></td>
+      <td><input type="number" value="${r.weight_g}" onchange="updateRow(${i},'weight_g',this.value)" style="width:52px" /></td>
+      <td><input type="text" value="${escHtml(r.customer)}" onchange="updateRow(${i},'customer',this.value)" style="min-width:70px" /></td>
+      <td><button class="del-btn" onclick="deleteRow(${i})">✕</button></td>
+    </tr>`).join('');
+  updateSubmitBtn();
+}
+
+function escHtml(s) { return String(s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function updateRow(i, field, val) {
+  if (field === 'weight_g') val = parseInt(val) || 0;
+  tableRows[i][field] = val; updateSubmitBtn();
+}
+function deleteRow(i) { tableRows.splice(i, 1); renderTable(); }
+function addRow() { tableRows.push({id:Date.now(), written_name:'', official_name:'', date:'', weight_g:0, status:'', customer:'顧客名不明'}); renderTable(); }
+
+function updateSubmitBtn() {
+  const valid = tableRows.filter(r => r.written_name || r.weight_g > 0).length;
+  document.getElementById('btnSubmit').disabled = valid === 0;
+  if (valid > 0) {
+    document.getElementById('summary').classList.add('show');
+    document.getElementById('summaryCount').textContent = valid + '行';
+  } else { document.getElementById('summary').classList.remove('show'); }
+}
+
+let logs = [];
+
+async function submitAll() {
+  const gasUrl = document.getElementById('gasUrl').value.trim();
+  if (!gasUrl) { showToast('Apps Script URLを入力してください', true); return; }
+  const targets = tableRows.filter(r => r.written_name || r.weight_g > 0);
+  if (!targets.length) return;
+
+  const btn = document.getElementById('btnSubmit');
+  btn.disabled = true;
+  btn.innerHTML = '<div class="btn-spinner"></div> 送信中...';
+
+  const dt = document.getElementById('dtBox').textContent;
+  let ok = 0;
+
+  for (const r of targets) {
+    const logId = addLog(r.written_name, r.official_name, r.date, r.weight_g, r.customer, dt, 'pending');
+    try {
+      await fetchWithTimeout(gasUrl, {
+        method: 'POST', mode: 'no-cors',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          type:          'memo',
+          written_name:  r.written_name,
+          official_name: r.official_name,
+          status:        r.status,
+          date:          r.date,
+          weight_g:      r.weight_g,
+          customer:      r.customer,
+          quantity:      1,
+          datetime:      dt
+        })
+      }, 10000);
+      updateLog(logId, 'ok'); ok++;
+    } catch(e) { updateLog(logId, 'err'); }
+    await sleep(150);
+  }
+
+  showToast('✅ ' + ok + '行送信完了！');
+  btn.disabled = false;
+  btn.innerHTML = '📊 スプレッドシートに送信';
+}
+
+function addLog(written, official, date, weight, customer, dt, status) {
+  const id = Date.now() + Math.random();
+  logs.unshift({id, written, official, date, weight, customer, dt, status});
+  renderLogs(); return id;
+}
+function updateLog(id, status) {
+  const item = logs.find(l => l.id === id);
+  if (item) { item.status = status; renderLogs(); }
+}
+function renderLogs() {
+  document.getElementById('logBadge').textContent = logs.length;
+  const body = document.getElementById('logBody');
+  if (!logs.length) { body.innerHTML = '<div class="log-empty">まだ送信履歴がありません</div>'; return; }
+  const lbl = {ok:'✓ 完了', err:'✗ エラー', pending:'⋯ 送信中'};
+  body.innerHTML = logs.map(l => `
+    <div class="log-item">
+      <span class="log-st ${l.status}">${lbl[l.status]}</span>
+      <div class="log-main">${l.written||''} → ${l.official||''} ${l.weight}g</div><div class="log-meta">👤 ${l.customer||''} 📅 ${l.date||'-'} ・ ${l.dt}</div>
+    </div>`).join('');
+}
+
+function fetchWithTimeout(url, options, ms) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('タイムアウト(' + Math.round(ms/1000) + '秒)')), ms);
+    fetch(url, options).then(res => { clearTimeout(timer); resolve(res); }).catch(err => { clearTimeout(timer); reject(err); });
+  });
+}
+
+let toastTimer;
+function showToast(msg, isErr=false) {
+  const el = document.getElementById('toast'); el.textContent = msg;
+  el.className = 'toast show' + (isErr ? ' error' : '');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+loadSettings();
+</script>
+</body>
+</html>

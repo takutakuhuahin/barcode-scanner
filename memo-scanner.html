@@ -263,9 +263,10 @@ const FISH_MAP = `
 手書き略称 → 正式DB名（対応表）
 ${Object.entries(FISH_ALIAS).map(([k,v]) => k + ' → ' + v).join('\n')}
 
-【正式DB名の完全リスト】
-official_nameは必ず以下のリストから選んでください。リストにない名前は使用禁止です：
-${VALID_FISH_NAMES.join(', ')}
+【正式DB名の完全リスト — official_nameはこの中から必ず選ぶこと】
+リスト外の名前は絶対に使用禁止です。
+わからない場合は最も近いリストの名前を選んでください：
+${VALID_FISH_NAMES.join('\n')}
 `;
 
 async function fetchModels() {
@@ -453,19 +454,27 @@ ${FISH_MAP}
       let name = (item.official_name || '').replace(/[\u0E00-\u0E7F\u3040-\u309F\u30A0-\u30FF\u3000-\u9FFF]+/g, '').trim();
       // エイリアスチェック
       if (FISH_ALIAS[name]) name = FISH_ALIAS[name];
-      // 正式リストに含まれるか確認
+      // 正式リストに完全一致
       if (VALID_SET.has(name)) {
         item.official_name = name;
-      } else {
-        // 部分一致で最も近いものを探す
-        const lower = name.toLowerCase().replace(/[\s-]/g, '');
-        const match = VALID_FISH_NAMES.find(v => v.toLowerCase().replace(/[\s-]/g, '') === lower);
-        if (match) {
-          item.official_name = match;
-        } else {
-          item.official_name = name + ' ⚠️';
-        }
+        return;
       }
+      // 大文字小文字・ハイフン・スペース無視で一致
+      const norm = name.toLowerCase().replace(/[\s\-_]+/g, '');
+      const exactMatch = VALID_FISH_NAMES.find(v => v.toLowerCase().replace(/[\s\-_]+/g, '') === norm);
+      if (exactMatch) { item.official_name = exactMatch; return; }
+      // 部分一致: nameがリスト名を含む or リスト名がnameを含む
+      const partialMatch = VALID_FISH_NAMES.find(v => {
+        const vn = v.toLowerCase().replace(/[\s\-_]+/g, '');
+        return vn.includes(norm) || norm.includes(vn);
+      });
+      if (partialMatch) { item.official_name = partialMatch; return; }
+      // 先頭キーワードで前方一致（例: "Kensaki" → "Kensaki-Ika"）
+      const firstWord = name.split(/[\s\-]/)[0].toLowerCase();
+      const prefixMatch = VALID_FISH_NAMES.find(v => v.toLowerCase().startsWith(firstWord));
+      if (prefixMatch) { item.official_name = prefixMatch; return; }
+      // どうしても見つからない場合のみ⚠️
+      item.official_name = name + ' ⚠️';
     });
     renderResultTable(allItems);
     const warnings = allItems.filter(i => i.official_name.includes('⚠️')).length;

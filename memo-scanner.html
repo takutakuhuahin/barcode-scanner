@@ -209,34 +209,60 @@
 
 <script>
 // ====== 魚名対応表 ======
+// 手書き略称 → 正式DB名（よくある略称の対応表）
+const FISH_ALIAS = {
+  'Kanpachi': 'Kuro-Kanpachi', 'Kanpchi': 'Kuro-Kanpachi', 'Kampachi': 'Kuro-Kanpachi', 'Konpachi': 'Kuro-Kanpachi',
+  'Aori whole': 'Aori-Ika WHOLE', 'Aori Whole': 'Aori-Ika WHOLE',
+  'Kamacu': 'Oo-Kamasu', 'Kamazu': 'Oo-Kamasu', 'Kamazcu': 'Oo-Kamasu',
+  'Modoki': 'Kuro-Aji-Modoki', 'Medoki': 'Kuro-Aji-Modoki', 'Mdoki': 'Kuro-Aji-Modoki', 'Madoki': 'Kuro-Aji-Modoki',
+  'Umadsura': 'Umadsura-Aji', 'Vmadsura': 'Umadsura-Aji', 'Umasura': 'Umadsura-Aji',
+  'Maguro': 'Koshinaga-Maguro',
+  'Tsabame': 'Tsubame-Konoshiro', 'Tsubame': 'Tsubame-Konoshiro',
+  'Yoroi': 'Yoroi-Aji', 'Oni': 'Oni-Aji', 'Chiri': 'Oni-Aji', 'Chm': 'Oni-Aji',
+  'Sawara': 'Yokoshima-Sawara', 'Samara': 'Yokoshima-Sawara',
+  'Hoshi Kaiwari': 'Hoshi-Kaiwari', 'Hoshikaiwari': 'Hoshi-Kaiwari',
+  'Kurohoshi': 'Kurohoshi-Fuedai',
+  'Ikekatsuo': 'Ookuchi-Ikekatsuo', 'IkeKatsuo': 'Ookuchi-Ikekatsuo', 'Ike Katsuo': 'Ookuchi-Ikekatsuo',
+  'Tate': 'Tate-Fuedai',
+  'Katsuo': 'Katsuo（suma）', 'Katsuo skin': 'Katsuo（suma）',
+  'Male': 'Mate-Aji', 'Mate': 'Mate-Aji',
+  'Matsu': 'Matsu-Dai', 'Matsc': 'Matsu-Dai',
+  'Shrimp': 'Banamei-Ebi（with shell）',
+  'Mabuta': 'Mabuta-Shimaaji', 'Mabcita': 'Mabuta-Shimaaji',
+  'Kimchi': 'FIsh Kimchi', 'Kimchi fish': 'FIsh Kimchi',
+  'Soy marineted': 'Soy Marinated', 'Soy marinated': 'Soy Marinated',
+  'Gingame': 'Gingame-Aji',
+};
+
+// List of Fish A列の正式名リスト（完全一致チェック用）
+const VALID_FISH_NAMES = [
+  'Ookuchi-Ikekatsuo','Kuro-Aji-Modoki','Kuro-Aji-Modoki WHOLE','Koshou-Dai','Kuro-Kanpachi',
+  'Yokoshima-Sawara','Aori-Ika','Aori-Ika WHOLE','Sumi-Ika','Sumi-Ika WHOLE',
+  'Kensaki-Ika-仕入','Kensaki-Ika WHOLE','Kensaki-Ika','Mate-Aji','Hishi-Kaiwari',
+  'Umadsura-Aji','Tsukihi-Gai SMALL','Tsukihi-Gai BIG','Tsukihi-Gai BIG\n(with himo)',
+  'Asari','Tako','Banamei-Ebi（with shell）','Banamei-Ebi（peeled）',
+  'Koshinaga-Maguro','Koshinaga-Maguro Z','Oo-Kamasu','Koro-Dai','Kuro-Kaiwari',
+  'Me-Aji','Gurukuma','Sappa','Shimofuri-Fuefuki','Matsu-Dai','Matsu-Dai Z',
+  'Nettai-Iso-Iwashi','Nettai-Iso-Iwashi fillet','Kadokawa-Fuedai','Ai-Buri','Shiira',
+  'Katsuo（suma）','Katsuo（suma） Z','Tsubame-Konoshiro','Umi-Namazu','Basho-Kajiki',
+  'Chairo-Maruhata J7','Chairo-Maruhata','He-Dai','Hoshi-Kaiwari','Mana-Gatsuo J7',
+  'Yoko-Fuedai','Karei','Cho-Zame','Yume-Umeiro','Mabuta-Shimaaji','Oni-Aji','Maru-Aji',
+  'Pla-Boo WHOLE','Pla-Boo','Yoroi-Aji','Rounin-Aji','Kuro-Kosho-Dai','Gomafue-Dai',
+  'Chinu','Tsumu-Buri','Andaman-Aji','Kitsune-Fuefuki','Mizo-Isaki','Gingame-Aji',
+  'Kara-Iwashi','Kasumi-Aji','Oki-Zayori WHOLE','Sayori','Sayori  WHOLE',
+  'FIsh Kimchi','Soy Marinated','Tate-Fuedai','Kurohoshi-Fuedai','Tsubame-Uo',
+  'Shiro-Gisu','Itohiki-Aji',
+];
+
+const VALID_SET = new Set(VALID_FISH_NAMES);
+
 const FISH_MAP = `
 手書き略称 → 正式DB名（対応表）
-Kanpachi / Kanpchi / Kampachi / Konpachi → Kuro-Kanpachi
-Aori Ika / Aori-Ika → Aori-Ika
-Aori whole / Aori Whole → Aori-Ika WHOLE
-Kamacu / Kamazu / Kamazcu / Kamazu → Oo-Kamasu
-Koro-Dai / Koro Dai / KoroDai / Koro Doe → Koro-Dai
-Modoki / Medoki / Mdoki / Modeki / Madoki → Kuro-Aji-Modoki
-Umadsura / Vmadsura / Umadsvra / Umadsva / Umasura / Umadsura → Umadsura-Aji
-Maguro → Koshinaga-Maguro
-Tsabame / Tsubame → Tsubame-Konoshiro
-Yoroi → Yoroi-Aji
-Oni → Oni-Aji
-Sawara / Samara → Yokoshima-Sawara
-Hoshi Kaiwari / Hoshikaiwari / Hoshi kaiwari → Hoshi-Kaiwari
-Kurohoshi → Kurohoshi-Fuedai
-Ikekatsuo / IkeKatsuo / Ike Katsuo / Ikakatsuo → Ookuchi-Ikekatsuo
-He-Dai / HeDai → He-Dai
-Tate → Tate-Fuedai
-Katsuo skin / Katsuo no skin / Restore Katsuo skin / Katsuo → Katsuo（suma）
-Male / Mate / Mate-Aji → Mate-Aji
-Matsu / Matsc / Matscr → Matsu-Dai
-Shrimp → Banamei-Ebi（with shell）
-Mabuta / Mabcita → Mabuta-Shimaaji
-Kimchi / Kimchi fish → FIsh Kimchi
-Soy marineted / Soy marinated → Soy Marinated
-Chiri / Chm → Oni-Aji
-Gingame → Gingame-Aji
+${Object.entries(FISH_ALIAS).map(([k,v]) => k + ' → ' + v).join('\n')}
+
+【正式DB名の完全リスト】
+official_nameは必ず以下のリストから選んでください。リストにない名前は使用禁止です：
+${VALID_FISH_NAMES.join(', ')}
 `;
 
 async function fetchModels() {
@@ -418,8 +444,29 @@ ${FISH_MAP}
   }
 
   if (allItems.length > 0) {
+    // official_nameをバリデーション＆修正
+    allItems.forEach(item => {
+      // タイ語・日本語を除去
+      let name = (item.official_name || '').replace(/[\u0E00-\u0E7F\u3040-\u309F\u30A0-\u30FF\u3000-\u9FFF]+/g, '').trim();
+      // エイリアスチェック
+      if (FISH_ALIAS[name]) name = FISH_ALIAS[name];
+      // 正式リストに含まれるか確認
+      if (VALID_SET.has(name)) {
+        item.official_name = name;
+      } else {
+        // 部分一致で最も近いものを探す
+        const lower = name.toLowerCase().replace(/[\s-]/g, '');
+        const match = VALID_FISH_NAMES.find(v => v.toLowerCase().replace(/[\s-]/g, '') === lower);
+        if (match) {
+          item.official_name = match;
+        } else {
+          item.official_name = name + ' ⚠️';
+        }
+      }
+    });
     renderResultTable(allItems);
-    showToast('✅ 合計' + allItems.length + '行検出！');
+    const warnings = allItems.filter(i => i.official_name.includes('⚠️')).length;
+    showToast('✅ 合計' + allItems.length + '行検出！' + (warnings ? ' ⚠️' + warnings + '件要確認' : ''));
   } else {
     showToast('❌ 読み取り失敗', true);
   }

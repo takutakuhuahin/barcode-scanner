@@ -357,27 +357,6 @@ async function analyzeAll() {
   updateSubmitBtn();
 }
 
-// ====== 正式魚名リスト（List of Fish A列） ======
-const VALID_FISH_NAMES = [
-  'Ookuchi-Ikekatsuo','Kuro-Aji-Modoki','Kuro-Aji-Modoki WHOLE','Koshou-Dai','Kuro-Kanpachi',
-  'Yokoshima-Sawara','Aori-Ika','Aori-Ika WHOLE','Sumi-Ika','Sumi-Ika WHOLE',
-  'Kensaki-Ika-仕入','Kensaki-Ika WHOLE','Kensaki-Ika','Mate-Aji','Hishi-Kaiwari',
-  'Umadsura-Aji','Tsukihi-Gai SMALL','Tsukihi-Gai BIG','Asari','Tako',
-  'Banamei-Ebi（with shell）','Banamei-Ebi（peeled）',
-  'Koshinaga-Maguro','Koshinaga-Maguro Z','Oo-Kamasu','Koro-Dai','Kuro-Kaiwari',
-  'Me-Aji','Gurukuma','Sappa','Shimofuri-Fuefuki','Matsu-Dai','Matsu-Dai Z',
-  'Nettai-Iso-Iwashi','Nettai-Iso-Iwashi fillet','Kadokawa-Fuedai','Ai-Buri','Shiira',
-  'Katsuo（suma）','Katsuo（suma） Z','Tsubame-Konoshiro','Umi-Namazu','Basho-Kajiki',
-  'Chairo-Maruhata J7','Chairo-Maruhata','He-Dai','Hoshi-Kaiwari','Mana-Gatsuo J7',
-  'Yoko-Fuedai','Karei','Cho-Zame','Yume-Umeiro','Mabuta-Shimaaji','Oni-Aji','Maru-Aji',
-  'Pla-Boo WHOLE','Pla-Boo','Yoroi-Aji','Rounin-Aji','Kuro-Kosho-Dai','Gomafue-Dai',
-  'Chinu','Tsumu-Buri','Andaman-Aji','Kitsune-Fuefuki','Mizo-Isaki','Gingame-Aji',
-  'Kara-Iwashi','Kasumi-Aji','Oki-Zayori WHOLE','Sayori','Sayori  WHOLE',
-  'FIsh Kimchi','Soy Marinated','Tate-Fuedai','Kurohoshi-Fuedai','Tsubame-Uo',
-  'Shiro-Gisu','Itohiki-Aji',
-];
-const VALID_SET = new Set(VALID_FISH_NAMES);
-
 // ====== Gemini API呼び出し ======
 async function callGemini(apiKey, model, base64) {
   const prompt = `画像内のすべてのラベルシールを読み取ってください。
@@ -387,20 +366,17 @@ async function callGemini(apiKey, model, base64) {
 各ラベルから以下を抽出：
 1. category：ラベル上部の種別（例：Sashimifillet、Sashimiwith shell）
 2. product：商品名（日本語・英語・タイ語すべて）
-3. fish_name：商品名から判定した正式DB名。必ず以下のリストから選ぶこと：
-${VALID_FISH_NAMES.join('\n')}
-4. barcode：バーコード下の品番（21で始まる英数字。例：21BESS00019）
-5. date：「ผลิต」の下の製造日（YYYY-MM-DD形式）
-6. weight_g：重量をグラム換算した整数（0.19kg→190）
+3. barcode：バーコード下の品番（21で始まる英数字。例：21BESS00019）
+4. date：「ผลิต」の下の製造日（YYYY-MM-DD形式）
+5. weight_g：重量をグラム換算した整数（0.19kg→190）
 
 必須ルール：
-- fish_nameは上記リストから最も近いものを必ず選ぶ。リスト外の名前は禁止
 - 読み取れない・ぼやけている項目は空文字("")または0にする
 - 1項目でも読み取れればそのラベルをリストに含める
 - 絶対に省略しない。画像内のラベル枚数分のオブジェクトを返す
 
 JSON配列のみで返答（他の文字不要）：
-[{"category":"","product":"","fish_name":"","barcode":"","date":"","weight_g":0}]`;
+[{"category":"","product":"","barcode":"","date":"","weight_g":0}]`;
 
   const body = JSON.stringify({
     contents: [{parts: [
@@ -454,22 +430,7 @@ JSON配列のみで返答（他の文字不要）：
 
   try {
     const parsed = JSON.parse(match[0]);
-    const items = Array.isArray(parsed) ? parsed.filter(l => l.barcode || l.date || l.product) : [];
-    // fish_nameをバリデーション
-    items.forEach(item => {
-      let name = (item.fish_name || item.product || '').replace(/[\u0E00-\u0E7F\u3040-\u309F\u30A0-\u30FF\u3000-\u9FFF]+/g, '').trim();
-      if (VALID_SET.has(name)) { item.fish_name = name; return; }
-      const norm = name.toLowerCase().replace(/[\s\-_]+/g, '');
-      const m1 = VALID_FISH_NAMES.find(v => v.toLowerCase().replace(/[\s\-_]+/g, '') === norm);
-      if (m1) { item.fish_name = m1; return; }
-      const m2 = VALID_FISH_NAMES.find(v => { const vn = v.toLowerCase().replace(/[\s\-_]+/g, ''); return vn.includes(norm) || norm.includes(vn); });
-      if (m2) { item.fish_name = m2; return; }
-      const fw = name.split(/[\s\-]/)[0].toLowerCase();
-      const m3 = VALID_FISH_NAMES.find(v => v.toLowerCase().startsWith(fw));
-      if (m3) { item.fish_name = m3; return; }
-      item.fish_name = name;
-    });
-    return items;
+    return Array.isArray(parsed) ? parsed.filter(l => l.barcode || l.date || l.product) : [];
   } catch(e) {
     throw new Error('JSONパース失敗');
   }
@@ -501,7 +462,7 @@ function renderResults() {
         html += `<div class="label-row">
           <div class="linfo">
             <div class="barcode">${l.barcode || '(品番未読取)'}</div>
-            <div class="ldate">📦 ${l.category || ''} ${l.product || ''} → <strong>${l.fish_name || '?'}</strong></div>
+            <div class="ldate">📦 ${l.category || ''} ${l.product || ''}</div>
             <div class="ldate">📅 ${l.date || '日付不明'} ⚖️ ${l.weight_g || '--'}</div>
           </div>
           <div class="qty-mini">
@@ -556,7 +517,7 @@ async function submitAll() {
       await fetchWithTimeout(gasUrl, {
         method: 'POST', mode: 'no-cors',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({barcode: l.barcode, category: l.category, product: l.product, fish_name: l.fish_name || '', mfg_date: l.date, weight_g: l.weight_g, quantity: l.qty, datetime: dt})
+        body: JSON.stringify({barcode: l.barcode, category: l.category, product: l.product, mfg_date: l.date, weight_g: l.weight_g, quantity: l.qty, datetime: dt})
       }, 10000);
       updateLog(logId, 'ok'); ok++;
     } catch(e) { updateLog(logId, 'err'); }
